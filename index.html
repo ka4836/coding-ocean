@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coding Ocean 海霸 - 程式航海挑戰</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font Inter & Pixel/Bubble Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Noto+Sans+TC:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 50%, #e0f2fe 100%);
+            min-height: 100vh;
+        }
+        .font-game {
+            font-family: 'Fredoka', 'Noto Sans TC', sans-serif;
+        }
+        /* 海洋波浪微動效 */
+        .ocean-grid {
+            background-color: #38bdf8;
+            background-image: radial-gradient(#0284c7 1px, transparent 1px);
+            background-size: 16px 16px;
+        }
+        .grid-tile {
+            transition: all 0.2s ease;
+        }
+        .grid-tile:hover {
+            filter: brightness(1.1);
+        }
+        /* 卡牌樣式復刻海霸桌遊風格 */
+        .card-style {
+            background: #fffbeb;
+            border: 4px solid #1d4ed8;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .card-style:hover:not(:disabled) {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+        }
+        .card-style:active:not(:disabled) {
+            transform: translateY(0);
+        }
+        /* 船隻方向旋轉與移動動畫 (0.8s 平滑視覺效果) */
+        .ship-container {
+            transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.8s ease, left 0.8s ease;
+        }
+        /* 出牌軌道滾動條 */
+        .scrollbar-custom::-webkit-scrollbar {
+            height: 8px;
+        }
+        .scrollbar-custom::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        .scrollbar-custom::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen text-slate-800 pb-10">
+
+    <!-- 頂部標題區 -->
+    <header class="bg-sky-700 text-white shadow-md py-3 px-6 mb-4 border-b-4 border-amber-400">
+        <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-2">
+            <div class="flex items-center gap-3">
+                <div class="bg-amber-400 text-sky-950 p-2.5 rounded-xl shadow-inner font-bold text-xl">
+                    <i class="fa-solid fa-ship"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black tracking-wider font-game">Coding Ocean 海霸航海挑戰</h1>
+                    <p class="text-xs text-sky-200">不插電程式思維 — 7x7 地圖運算與跳島冒險</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="btnHelp" class="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-lg text-sm font-bold transition flex items-center gap-1.5 shadow">
+                    <i class="fa-solid fa-circle-question"></i> 規則說明
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要內容區域 -->
+    <main class="max-w-7xl mx-auto w-full px-4 flex-1 flex flex-col gap-6">
+        
+        <!-- 上半部：左側設定與卡牌面板 + 右側 7x7 棋盤 -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            <!-- 左側控制面板 (5 欄) -->
+            <div class="lg:col-span-5 flex flex-col gap-4">
+                
+                <!-- 1. 地圖編輯工具 -->
+                <div class="bg-white/90 backdrop-blur border-2 border-sky-200 rounded-2xl p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="font-bold text-sky-900 flex items-center gap-2 text-base">
+                            <i class="fa-solid fa-map-location-dot text-amber-500"></i> 地圖配置模式
+                        </h2>
+                        <span id="lockStatusBadge" class="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                            ✏️ 編輯模式中
+                        </span>
+                    </div>
+
+                    <!-- 模式選擇按鈕 -->
+                    <div id="editorTools" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                        <button data-mode="ship" class="tool-btn active-tool bg-sky-100 border-2 border-sky-500 text-sky-900 p-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition">
+                            <i class="fa-solid fa-sailboat text-blue-600 text-lg"></i>
+                            放置小船
+                        </button>
+                        <button data-mode="mountain" class="tool-btn bg-slate-100 border-2 border-slate-200 text-slate-700 p-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition">
+                            <i class="fa-solid fa-mountain text-emerald-600 text-lg"></i>
+                            放置小山
+                        </button>
+                        <button data-mode="treasure" class="tool-btn bg-slate-100 border-2 border-slate-200 text-slate-700 p-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition">
+                            <i class="fa-solid fa-gem text-amber-500 text-lg"></i>
+                            放置寶藏
+                        </button>
+                        <button id="btnRotateShip" class="bg-slate-100 border-2 border-slate-200 text-slate-700 p-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition hover:bg-slate-200">
+                            <i class="fa-solid fa-rotate-right text-indigo-600 text-lg"></i>
+                            旋轉小船
+                        </button>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button id="btnToggleLock" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-3 rounded-xl shadow transition text-sm flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-lock"></i> 確認版面配置 (開始解題)
+                        </button>
+                        <button id="btnClearMap" class="bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold py-2 px-3 rounded-xl transition text-sm flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-trash-can"></i> 清空
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. 卡牌限制額度設定區 -->
+                <div class="bg-white/90 backdrop-blur border-2 border-sky-200 rounded-2xl p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <h2 class="font-bold text-sky-900 flex items-center gap-2 text-base">
+                            <i class="fa-solid fa-sliders text-blue-500"></i> 卡牌數量限制設定
+                        </h2>
+                        <span class="text-xs text-slate-500">留空表示不限制(∞)</span>
+                    </div>
+
+                    <div class="grid grid-cols-5 gap-2 text-center text-xs">
+                        <div class="bg-sky-50 p-2 rounded-lg border border-sky-100 flex flex-col items-center">
+                            <span class="font-bold text-sky-900 mb-1">前進</span>
+                            <input type="number" id="limitForward" min="0" placeholder="∞" class="w-full text-center border border-sky-300 rounded px-1 py-0.5 font-bold text-slate-800 bg-white">
+                        </div>
+                        <div class="bg-sky-50 p-2 rounded-lg border border-sky-100 flex flex-col items-center">
+                            <span class="font-bold text-sky-900 mb-1">後退</span>
+                            <input type="number" id="limitBackward" min="0" placeholder="∞" class="w-full text-center border border-sky-300 rounded px-1 py-0.5 font-bold text-slate-800 bg-white">
+                        </div>
+                        <div class="bg-sky-50 p-2 rounded-lg border border-sky-100 flex flex-col items-center">
+                            <span class="font-bold text-sky-900 mb-1">左轉</span>
+                            <input type="number" id="limitTurnLeft" min="0" placeholder="∞" class="w-full text-center border border-sky-300 rounded px-1 py-0.5 font-bold text-slate-800 bg-white">
+                        </div>
+                        <div class="bg-sky-50 p-2 rounded-lg border border-sky-100 flex flex-col items-center">
+                            <span class="font-bold text-sky-900 mb-1">右轉</span>
+                            <input type="number" id="limitTurnRight" min="0" placeholder="∞" class="w-full text-center border border-sky-300 rounded px-1 py-0.5 font-bold text-slate-800 bg-white">
+                        </div>
+                        <div class="bg-sky-50 p-2 rounded-lg border border-sky-100 flex flex-col items-center">
+                            <span class="font-bold text-emerald-900 mb-1">跳島卡</span>
+                            <input type="number" id="limitIslandJump" min="0" placeholder="∞" class="w-full text-center border border-sky-300 rounded px-1 py-0.5 font-bold text-slate-800 bg-white">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. 可選擇出牌區 -->
+                <div class="bg-white/90 backdrop-blur border-2 border-sky-200 rounded-2xl p-4 shadow-sm">
+                    <h2 class="font-bold text-sky-900 mb-3 flex items-center justify-between text-base">
+                        <span><i class="fa-solid fa-layer-group text-indigo-500"></i> 點擊卡牌加入出牌區</span>
+                    </h2>
+
+                    <!-- 卡牌列表 (5 張卡牌) -->
+                    <div class="grid grid-cols-5 gap-2">
+                        <!-- 前進卡 -->
+                        <button id="btnCardForward" onclick="addCardToQueue('forward')" class="card-style relative p-2 flex flex-col items-center justify-between h-28 group">
+                            <div class="text-[10px] font-bold text-sky-800">前進</div>
+                            <div class="text-2xl text-amber-700 my-auto group-hover:scale-110 transition">↑</div>
+                            <span id="badgeForward" class="text-[10px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded-full shadow">x∞</span>
+                        </button>
+                        <!-- 後退卡 -->
+                        <button id="btnCardBackward" onclick="addCardToQueue('backward')" class="card-style relative p-2 flex flex-col items-center justify-between h-28 group">
+                            <div class="text-[10px] font-bold text-sky-800">後退</div>
+                            <div class="text-2xl text-amber-700 my-auto group-hover:scale-110 transition">↓</div>
+                            <span id="badgeBackward" class="text-[10px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded-full shadow">x∞</span>
+                        </button>
+                        <!-- 左轉卡 -->
+                        <button id="btnCardTurnLeft" onclick="addCardToQueue('turnLeft')" class="card-style relative p-2 flex flex-col items-center justify-between h-28 group">
+                            <div class="text-[10px] font-bold text-sky-800">左轉</div>
+                            <div class="text-2xl text-amber-700 my-auto group-hover:scale-110 transition">↰</div>
+                            <span id="badgeTurnLeft" class="text-[10px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded-full shadow">x∞</span>
+                        </button>
+                        <!-- 右轉卡 -->
+                        <button id="btnCardTurnRight" onclick="addCardToQueue('turnRight')" class="card-style relative p-2 flex flex-col items-center justify-between h-28 group">
+                            <div class="text-[10px] font-bold text-sky-800">右轉</div>
+                            <div class="text-2xl text-amber-700 my-auto group-hover:scale-110 transition">↱</div>
+                            <span id="badgeTurnRight" class="text-[10px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded-full shadow">x∞</span>
+                        </button>
+                        <!-- 跳島卡 -->
+                        <button id="btnCardIslandJump" onclick="addCardToQueue('islandJump')" class="card-style border-emerald-600 relative p-2 flex flex-col items-center justify-between h-28 group bg-emerald-50">
+                            <div class="text-[10px] font-bold text-emerald-900">跳島卡</div>
+                            <div class="text-lg text-emerald-700 my-auto group-hover:scale-110 transition">🏝️</div>
+                            <span id="badgeIslandJump" class="text-[10px] font-black bg-emerald-600 text-white px-1.5 py-0.5 rounded-full shadow">x∞</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 右側 7x7 藍色方格地圖 (7 欄) -->
+            <div class="lg:col-span-7 flex flex-col items-center">
+                <div class="w-full bg-sky-900 p-4 rounded-3xl shadow-xl border-4 border-amber-400/80 relative">
+                    <!-- 地圖標題 -->
+                    <div class="flex justify-between items-center text-amber-200 text-xs font-bold mb-2 px-1">
+                        <span><i class="fa-solid fa-compass"></i> 海洋冒險棋盤 (7 x 7)</span>
+                        <span id="treasureProgressText"><i class="fa-solid fa-gem text-amber-400"></i> 寶藏: 0 / 0</span>
+                    </div>
+
+                    <!-- 7x7 網格容器 -->
+                    <div id="gridBoard" class="ocean-grid grid grid-cols-7 grid-rows-7 gap-1.5 p-2 rounded-2xl bg-sky-800 relative aspect-square w-full max-w-[520px] mx-auto select-none">
+                        <!-- 動態由 JS 生成 49 個格子 -->
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 下方出牌區與控制按鈕 -->
+        <div class="bg-white/95 backdrop-blur border-2 border-sky-300 rounded-2xl p-4 shadow-lg flex flex-col gap-3">
+            <div class="flex flex-wrap justify-between items-center gap-2">
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- Start 執行按鈕 -->
+                    <button id="btnStart" onclick="executeProgram()" class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-lg px-6 py-2.5 rounded-xl shadow-lg border-2 border-amber-300 transition flex items-center gap-2 active:scale-95">
+                        <i class="fa-solid fa-play"></i> Start 航行
+                    </button>
+
+                    <!-- 動畫速度選擇器 -->
+                    <div class="flex items-center gap-1.5 bg-sky-100/80 px-2.5 py-1.5 rounded-xl border border-sky-200 text-xs font-bold text-sky-900">
+                        <i class="fa-solid fa-gauge-high text-amber-600"></i>
+                        <span>動畫速度：</span>
+                        <select id="selectSpeed" class="bg-white border border-sky-300 rounded px-2 py-1 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer">
+                            <option value="2000">慢速 (2.0秒)</option>
+                            <option value="1500" selected>標準 (1.5秒)</option>
+                            <option value="1000">稍快 (1.0秒)</option>
+                        </select>
+                    </div>
+
+                    <div class="text-xs text-slate-500 font-bold hidden sm:block">
+                        指令總數：<span id="cmdCount" class="text-sky-600 font-extrabold text-sm">0</span> 張
+                    </div>
+                </div>
+
+                <!-- 輔助控制按鈕 -->
+                <div class="flex items-center gap-2">
+                    <button onclick="undoCard()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition border border-slate-300 flex items-center gap-1">
+                        <i class="fa-solid fa-rotate-left"></i> 上一步
+                    </button>
+                    <button onclick="clearQueue()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold px-3 py-2 rounded-xl text-xs transition border border-rose-200 flex items-center gap-1">
+                        <i class="fa-solid fa-trash"></i> 清空指令
+                    </button>
+                    <button onclick="resetShipToStart()" class="bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold px-3 py-2 rounded-xl text-xs transition border border-sky-200 flex items-center gap-1">
+                        <i class="fa-solid fa-anchor"></i> 小船復位
+                    </button>
+                </div>
+            </div>
+
+            <!-- 出牌序列顯示區 -->
+            <div class="bg-sky-50 border-2 border-dashed border-sky-300 rounded-xl p-3 min-h-[90px] flex items-center justify-center relative">
+                <span id="emptyQueueText" class="text-slate-400 text-xs font-bold pointer-events-none">
+                    👈 請點擊左側卡牌，為小船編排航行路線！
+                </span>
+                <div id="commandQueueTrack" class="flex items-center gap-2 overflow-x-auto scrollbar-custom w-full py-1 hidden">
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 彈出式訊息模態框 (Modal) -->
+    <div id="modalOverlay" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-4 border-amber-400 transform transition-all scale-95 opacity-0" id="modalBox">
+            <div class="text-center">
+                <div id="modalIconContainer" class="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl mb-4 bg-amber-100 text-amber-600">
+                    <i id="modalIcon" class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <h3 id="modalTitle" class="text-xl font-black text-slate-800 mb-2 font-game">錯誤提示</h3>
+                <p id="modalMessage" class="text-sm text-slate-600 mb-6 leading-relaxed">提示訊息說明文字...</p>
+                
+                <button onclick="closeModal()" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-xl shadow-md transition text-base">
+                    確認
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const GRID_SIZE = 7;
+        
+        // 地圖狀態 7x7: 'empty', 'mountain', 'treasure'
+        let gridData = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill('empty'));
+        
+        // 小船當前位置與方向 (0: Up, 1: Right, 2: Down, 3: Left)
+        let shipState = { r: 6, c: 3, dir: 0 };
+        let initialShipState = { r: 6, c: 3, dir: 0 };
+        
+        // 編輯模式: 'ship', 'mountain', 'treasure'
+        let currentTool = 'ship';
+        let isMapLocked = false;
+        let isExecuting = false;
+
+        // 出牌隊列
+        let commandQueue = [];
+
+        // 卡牌設定數量 (null 代表無限)
+        let cardLimits = {
+            forward: null,
+            backward: null,
+            turnLeft: null,
+            turnRight: null,
+            islandJump: null
+        };
+
+        // 卡牌基本資訊定義
+        const CARD_DEFS = {
+            forward: { name: "前進", icon: "↑", color: "text-amber-700", bg: "bg-amber-50" },
+            backward: { name: "後退", icon: "↓", color: "text-amber-700", bg: "bg-amber-50" },
+            turnLeft: { name: "左轉", icon: "↰", color: "text-amber-700", bg: "bg-amber-50" },
+            turnRight: { name: "右轉", icon: "↱", color: "text-amber-700", bg: "bg-amber-50" },
+            islandJump: { name: "跳島卡", icon: "🏝️", color: "text-emerald-700", bg: "bg-emerald-50" }
+        };
+
+        // 方向向量：上(0), 右(1), 下(2), 左(3)
+        const DIR_VECTORS = [
+            { dr: -1, dc: 0, label: "北(上)" },
+            { dr: 0, dc: 1, label: "東(右)" },
+            { dr: 1, dc: 0, label: "南(下)" },
+            { dr: 0, dc: -1, label: "西(左)" }
+        ];
+
+        // 頁面初始化
+        window.onload = function() {
+            initGrid();
+            setupEventListeners();
+            updateCardLimitBadges();
+            updateTreasureProgress();
+        };
+
+        // 初始化 7x7 網格 UI
+        function initGrid() {
+            const gridBoard = document.getElementById('gridBoard');
+            gridBoard.innerHTML = '';
+
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = `grid-tile border border-sky-400/40 rounded-xl relative flex items-center justify-center cursor-pointer select-none bg-sky-300/30 hover:bg-sky-200/50`;
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    cell.onclick = () => onGridCellClick(r, c);
+                    gridBoard.appendChild(cell);
+                }
+            }
+            renderBoardElements();
+        }
+
+        // 渲染地圖物件 (山脈、寶藏、船隻)
+        function renderBoardElements() {
+            const gridBoard = document.getElementById('gridBoard');
+            
+            // 清除現有動態物件
+            document.querySelectorAll('.tile-object').forEach(el => el.remove());
+
+            // 1. 繪製小山與寶藏
+            let totalTreasures = 0;
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cellIndex = r * GRID_SIZE + c;
+                    const cellEl = gridBoard.children[cellIndex];
+                    const type = gridData[r][c];
+
+                    if (type === 'mountain') {
+                        const m = document.createElement('div');
+                        m.className = 'tile-object text-2xl sm:text-3xl drop-shadow-md pointer-events-none';
+                        m.innerHTML = '⛰️';
+                        cellEl.appendChild(m);
+                    } else if (type === 'treasure') {
+                        totalTreasures++;
+                        const t = document.createElement('div');
+                        t.className = 'tile-object text-2xl sm:text-3xl drop-shadow-md animate-bounce pointer-events-none';
+                        t.innerHTML = '💎';
+                        cellEl.appendChild(t);
+                    }
+                }
+            }
+
+            // 2. 繪製小船
+            const shipCellIndex = shipState.r * GRID_SIZE + shipState.c;
+            const shipCell = gridBoard.children[shipCellIndex];
+            if (shipCell) {
+                const shipEl = document.createElement('div');
+                shipEl.id = 'shipElement';
+                shipEl.className = 'tile-object ship-container text-3xl sm:text-4xl drop-shadow-xl z-20 flex items-center justify-center pointer-events-none relative';
+                
+                // 依據 dir 旋轉 (0: 0deg, 1: 90deg, 2: 180deg, 3: 270deg)
+                const rot = shipState.dir * 90;
+                shipEl.style.transform = `rotate(${rot}deg)`;
+                
+                // 船隻圖示與方向箭頭
+                shipEl.innerHTML = `
+                    <div class="relative flex items-center justify-center">
+                        <i class="fa-solid fa-ship text-blue-800 drop-shadow"></i>
+                        <i class="fa-solid fa-circle-arrow-up text-amber-300 text-xs absolute -top-1 font-bold"></i>
+                    </div>
+                `;
+                shipCell.appendChild(shipEl);
+            }
+
+            updateTreasureProgress();
+        }
+
+        // 格子點擊事件
+        function onGridCellClick(r, c) {
+            if (isExecuting) return;
+
+            if (isMapLocked) {
+                showModal("地圖已鎖定", "目前地圖處於「鎖定解題」狀態。若需重新配置小山或寶藏，請先點擊「🔓 解鎖地圖」。", "info");
+                return;
+            }
+
+            if (currentTool === 'ship') {
+                // 移動小船起點
+                shipState.r = r;
+                shipState.c = c;
+                initialShipState.r = r;
+                initialShipState.c = c;
+                // 若原本有山或寶藏則清除
+                gridData[r][c] = 'empty';
+            } else if (currentTool === 'mountain') {
+                if (shipState.r === r && shipState.c === c) return; // 不能覆蓋小船
+                gridData[r][c] = (gridData[r][c] === 'mountain') ? 'empty' : 'mountain';
+            } else if (currentTool === 'treasure') {
+                if (shipState.r === r && shipState.c === c) return;
+                gridData[r][c] = (gridData[r][c] === 'treasure') ? 'empty' : 'treasure';
+            }
+
+            renderBoardElements();
+        }
+
+        // 綁定控制按鈕
+        function setupEventListeners() {
+            // 工具按鈕切換
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                btn.onclick = (e) => {
+                    if (isMapLocked) return;
+                    document.querySelectorAll('.tool-btn').forEach(b => {
+                        b.classList.remove('active-tool', 'bg-sky-100', 'border-sky-500');
+                        b.classList.add('bg-slate-100', 'border-slate-200');
+                    });
+                    const target = e.currentTarget;
+                    target.classList.add('active-tool', 'bg-sky-100', 'border-sky-500');
+                    currentTool = target.dataset.mode;
+                };
+            });
+
+            // 旋轉小船
+            document.getElementById('btnRotateShip').onclick = () => {
+                if (isMapLocked) return;
+                shipState.dir = (shipState.dir + 1) % 4;
+                initialShipState.dir = shipState.dir;
+                renderBoardElements();
+            };
+
+            // 鎖定/解鎖切換
+            document.getElementById('btnToggleLock').onclick = () => {
+                isMapLocked = !isMapLocked;
+                const badge = document.getElementById('lockStatusBadge');
+                const btn = document.getElementById('btnToggleLock');
+                
+                if (isMapLocked) {
+                    badge.className = "text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300";
+                    badge.innerHTML = "🔒 關卡已鎖定";
+                    btn.innerHTML = '<i class="fa-solid fa-lock-open"></i> 🔓 解鎖地圖 (自由配置)';
+                    btn.className = "flex-1 bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-3 rounded-xl shadow transition text-sm flex items-center justify-center gap-2";
+                } else {
+                    badge.className = "text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300";
+                    badge.innerHTML = "✏️ 編輯模式中";
+                    btn.innerHTML = '<i class="fa-solid fa-lock"></i> 確認版面配置 (開始解題)';
+                    btn.className = "flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-3 rounded-xl shadow transition text-sm flex items-center justify-center gap-2";
+                }
+            };
+
+            // 清空地圖
+            document.getElementById('btnClearMap').onclick = () => {
+                if (isMapLocked) return;
+                gridData = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill('empty'));
+                renderBoardElements();
+            };
+
+            // 卡牌限額輸入監聽
+            const limitInputs = ['limitForward', 'limitBackward', 'limitTurnLeft', 'limitTurnRight', 'limitIslandJump'];
+            limitInputs.forEach(id => {
+                document.getElementById(id).oninput = updateCardLimitBadges;
+            });
+        }
+
+        // 更新卡牌限額設定與剩餘標籤
+        function updateCardLimitBadges() {
+            cardLimits.forward = parseLimit('limitForward');
+            cardLimits.backward = parseLimit('limitBackward');
+            cardLimits.turnLeft = parseLimit('limitTurnLeft');
+            cardLimits.turnRight = parseLimit('limitTurnRight');
+            cardLimits.islandJump = parseLimit('limitIslandJump');
+
+            updateBadge('badgeForward', 'forward');
+            updateBadge('badgeBackward', 'backward');
+            updateBadge('badgeTurnLeft', 'turnLeft');
+            updateBadge('badgeTurnRight', 'turnRight');
+            updateBadge('badgeIslandJump', 'islandJump');
+        }
+
+        function parseLimit(inputId) {
+            const val = document.getElementById(inputId).value.trim();
+            if (val === '' || isNaN(val) || parseInt(val) < 0) return null;
+            return parseInt(val);
+        }
+
+        function updateBadge(badgeId, cardType) {
+            const badge = document.getElementById(badgeId);
+            const limit = cardLimits[cardType];
+            const used = commandQueue.filter(c => c === cardType).length;
+
+            if (limit === null) {
+                badge.innerText = 'x∞';
+                badge.className = "text-[10px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded-full shadow";
+            } else {
+                const remain = limit - used;
+                badge.innerText = `剩 ${remain}`;
+                if (remain <= 0) {
+                    badge.className = "text-[10px] font-black bg-rose-600 text-white px-1.5 py-0.5 rounded-full shadow";
+                } else {
+                    badge.className = "text-[10px] font-black bg-amber-600 text-white px-1.5 py-0.5 rounded-full shadow";
+                }
+            }
+        }
+
+        // 新增卡牌至出牌區
+        function addCardToQueue(cardType) {
+            if (isExecuting) return;
+
+            const limit = cardLimits[cardType];
+            const currentCount = commandQueue.filter(c => c === cardType).length;
+
+            if (limit !== null && currentCount >= limit) {
+                showModal(
+                    "超過卡牌數量限制！", 
+                    `卡牌【${CARD_DEFS[cardType].name}】已達到設定的使用上限 (${limit} 張)！`, 
+                    "warning"
+                );
+                return;
+            }
+
+            commandQueue.push(cardType);
+            renderCommandQueueTrack();
+            updateCardLimitBadges();
+        }
+
+        // 上一步撤回
+        function undoCard() {
+            if (isExecuting || commandQueue.length === 0) return;
+            commandQueue.pop();
+            renderCommandQueueTrack();
+            updateCardLimitBadges();
+        }
+
+        // 清空出牌區
+        function clearQueue() {
+            if (isExecuting) return;
+            commandQueue = [];
+            renderCommandQueueTrack();
+            updateCardLimitBadges();
+        }
+
+        // 渲染出牌軌道 UI
+        function renderCommandQueueTrack() {
+            const track = document.getElementById('commandQueueTrack');
+            const emptyText = document.getElementById('emptyQueueText');
+            document.getElementById('cmdCount').innerText = commandQueue.length;
+
+            if (commandQueue.length === 0) {
+                track.innerHTML = '';
+                track.classList.add('hidden');
+                if (emptyText) emptyText.classList.remove('hidden');
+                return;
+            }
+
+            if (emptyText) emptyText.classList.add('hidden');
+            track.classList.remove('hidden');
+            track.innerHTML = '';
+
+            commandQueue.forEach((cardKey, index) => {
+                const def = CARD_DEFS[cardKey];
+                const cardEl = document.createElement('div');
+                cardEl.className = `flex-shrink-0 ${def.bg} border-2 border-sky-600 rounded-xl p-2 w-16 h-20 flex flex-col items-center justify-between shadow-sm relative group`;
+                cardEl.id = `cmdCard-${index}`;
+                
+                cardEl.innerHTML = `
+                    <span class="text-[10px] font-bold text-sky-900">#${index + 1}</span>
+                    <span class="text-xl ${def.color} font-black my-auto">${def.icon}</span>
+                    <span class="text-[10px] font-extrabold text-slate-700">${def.name}</span>
+                    <button onclick="removeCardAtIndex(${index})" class="absolute -top-2 -right-2 bg-rose-500 hover:bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow opacity-0 group-hover:opacity-100 transition">
+                        ✕
+                    </button>
+                `;
+                track.appendChild(cardEl);
+            });
+
+            // 自動滾動至最新卡牌
+            track.scrollLeft = track.scrollWidth;
+        }
+
+        function removeCardAtIndex(index) {
+            if (isExecuting) return;
+            commandQueue.splice(index, 1);
+            renderCommandQueueTrack();
+            updateCardLimitBadges();
+        }
+
+        // 執行航行程式 (Start)
+        async function executeProgram() {
+            if (isExecuting) return;
+            if (commandQueue.length === 0) {
+                showModal("無航行卡牌", "請先點擊卡牌放入下方出牌區，再點擊 Start 執行航行！", "info");
+                return;
+            }
+
+            isExecuting = true;
+            document.getElementById('btnStart').disabled = true;
+            document.getElementById('btnStart').classList.add('opacity-50', 'cursor-not-allowed');
+
+            // 取得使用者設定的動畫展示速度
+            const speedSelect = document.getElementById('selectSpeed');
+            const stepDelayMs = speedSelect ? parseInt(speedSelect.value, 10) : 1500;
+
+            // 確保復位到起始點
+            resetShipToStart(false);
+            
+            let currentShip = { ...initialShipState };
+            let currentGrid = JSON.parse(JSON.stringify(gridData));
+            let collectedTreasures = 0;
+
+            for (let i = 0; i < commandQueue.length; i++) {
+                const card = commandQueue[i];
+                
+                // 1. 同時亮起當前卡牌與進行動作
+                highlightExecutingCard(i);
+
+                // 判斷指令與檢查 Bug 規則
+                const result = processStep(card, currentShip, currentGrid);
+
+                if (!result.success) {
+                    // 出現 BUG 錯誤
+                    await delay(500);
+                    showModal("⚠️ 航行程式出錯 (Bug)", result.errorMsg, "error");
+                    resetShipToStart(false); // 復位但保留卡牌序列
+                    finishExecution();
+                    return;
+                }
+
+                // 更新座標與狀態
+                currentShip = result.nextShip;
+                shipState = { ...currentShip };
+
+                // 檢查是否收集到寶藏
+                if (currentGrid[currentShip.r][currentShip.c] === 'treasure') {
+                    currentGrid[currentShip.r][currentShip.c] = 'empty';
+                    gridData[currentShip.r][currentShip.c] = 'empty'; // 地圖上移除寶藏
+                    collectedTreasures++;
+                }
+
+                // 渲染小船移動動畫
+                renderBoardElements();
+
+                // 2. 亮牌與小船移動後，停留指定時間供學生比對觀察
+                await delay(stepDelayMs);
+            }
+
+            // 指令全部執行完畢後檢查：是否依然受困在小島上？
+            if (gridData[currentShip.r][currentShip.c] === 'mountain') {
+                await delay(500);
+                showModal(
+                    "⚠️ 航行程式出錯 (Bug)", 
+                    "小船卡在小島上了！航行結束時小船必須停留在海面上，請使用跳島卡回到海上！", 
+                    "error"
+                );
+                resetShipToStart(false);
+                finishExecution();
+                return;
+            }
+
+            // 檢查是否達成勝利 (獲得全部寶藏)
+            const remainingTreasures = countTreasuresOnGrid();
+            if (remainingTreasures === 0 && collectedTreasures > 0) {
+                showModal("🎉 挑戰成功！", `太棒了！小船成功順利避開危險，並蒐集到所有寶藏！`, "success");
+            } else {
+                showModal("航行完成", "卡牌執行完畢！小船已安全抵達目的地。", "info");
+            }
+
+            finishExecution();
+        }
+
+        // 處理單一步驟邏輯與驗證規範
+        function processStep(card, ship, grid) {
+            let { r, c, dir } = ship;
+            const vector = DIR_VECTORS[dir];
+            const isCurrentOnMountain = (grid[r][c] === 'mountain');
+
+            if (card === 'turnLeft') {
+                dir = (dir + 3) % 4;
+                return { success: true, nextShip: { r, c, dir } };
+            }
+
+            if (card === 'turnRight') {
+                dir = (dir + 1) % 4;
+                return { success: true, nextShip: { r, c, dir } };
+            }
+
+            if (card === 'forward') {
+                // 如果目前在小島上，不能使用普通前進
+                if (isCurrentOnMountain) {
+                    return {
+                        success: false,
+                        errorMsg: "受困小島！小船在小島上無法使用普通【前進卡】航行，必須使用【跳島卡】跳回海面！"
+                    };
+                }
+
+                const nr = r + vector.dr;
+                const nc = c + vector.dc;
+
+                // 檢查是否衝出邊界
+                if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) {
+                    return { success: false, errorMsg: "衝出海域邊界了！小船無法開出 7x7 棋盤外。" };
+                }
+
+                // 檢查是否撞山
+                if (grid[nr][nc] === 'mountain') {
+                    return { success: false, errorMsg: "撞到小山了！無法直接駛入小島，請改用【跳島卡】或繞道航行。" };
+                }
+
+                return { success: true, nextShip: { r: nr, c: nc, dir } };
+            }
+
+            if (card === 'backward') {
+                if (isCurrentOnMountain) {
+                    return {
+                        success: false,
+                        errorMsg: "受困小島！小船在小島上無法使用普通【後退卡】航行，必須使用【跳島卡】跳回海面！"
+                    };
+                }
+
+                const br = r - vector.dr;
+                const bc = c - vector.dc;
+
+                if (br < 0 || br >= GRID_SIZE || bc < 0 || bc >= GRID_SIZE) {
+                    return { success: false, errorMsg: "後退衝出海域邊界了！" };
+                }
+
+                if (grid[br][bc] === 'mountain') {
+                    return { success: false, errorMsg: "後退時撞到小山了！" };
+                }
+
+                return { success: true, nextShip: { r: br, c: bc, dir } };
+            }
+
+            if (card === 'islandJump') {
+                const tr = r + vector.dr;
+                const tc = c + vector.dc;
+
+                // 檢查邊界
+                if (tr < 0 || tr >= GRID_SIZE || tc < 0 || tc >= GRID_SIZE) {
+                    return { success: false, errorMsg: "跳島失敗！前方超出海域範圍。" };
+                }
+
+                const targetType = grid[tr][tc];
+
+                // 情況 A: 小船在海面上 -> 必須跳到小山/小島
+                if (!isCurrentOnMountain) {
+                    if (targetType !== 'mountain') {
+                        return { 
+                            success: false, 
+                            errorMsg: "【跳島卡】使用錯誤！小船在海面上時，前方必須是【小山/小島】才能執行跳島！" 
+                        };
+                    }
+                    // 成功跳上小島
+                    return { success: true, nextShip: { r: tr, c: tc, dir } };
+                } 
+                // 情況 B: 小船在小島上 -> 必須跳回海面 (非小山)
+                else {
+                    if (targetType === 'mountain') {
+                        return { 
+                            success: false, 
+                            errorMsg: "【跳島卡】使用錯誤！前方依然是小島，無法連續跳躍到另一個小島上。" 
+                        };
+                    }
+                    // 成功跳回海面
+                    return { success: true, nextShip: { r: tr, c: tc, dir } };
+                }
+            }
+
+            return { success: false, errorMsg: "未知的卡牌指令。" };
+        }
+
+        // 小船復位
+        function resetShipToStart(clearHighlight = true) {
+            shipState = { ...initialShipState };
+            renderBoardElements();
+            if (clearHighlight) {
+                removeCardHighlights();
+            }
+        }
+
+        // 清除卡牌高亮
+        function removeCardHighlights() {
+            document.querySelectorAll('#commandQueueTrack > div').forEach(el => {
+                el.classList.remove('ring-4', 'ring-amber-500', 'scale-105');
+            });
+        }
+
+        // 高亮當前執行的卡牌
+        function highlightExecutingCard(index) {
+            removeCardHighlights();
+            const cardEl = document.getElementById(`cmdCard-${index}`);
+            if (cardEl) {
+                cardEl.classList.add('ring-4', 'ring-amber-500', 'scale-105');
+                cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }
+
+        // 結束執行狀態
+        function finishExecution() {
+            isExecuting = false;
+            removeCardHighlights();
+            const startBtn = document.getElementById('btnStart');
+            startBtn.disabled = false;
+            startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+
+        // 計算地圖剩餘寶藏
+        function countTreasuresOnGrid() {
+            let count = 0;
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (gridData[r][c] === 'treasure') count++;
+                }
+            }
+            return count;
+        }
+
+        // 更新寶藏文字標籤
+        function updateTreasureProgress() {
+            const count = countTreasuresOnGrid();
+            document.getElementById('treasureProgressText').innerHTML = `<i class="fa-solid fa-gem text-amber-400"></i> 地圖寶藏: ${count} 個`;
+        }
+
+        // 顯示彈窗對話框
+        function showModal(title, msg, type = "info") {
+            const overlay = document.getElementById('modalOverlay');
+            const box = document.getElementById('modalBox');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalMessage = document.getElementById('modalMessage');
+            const iconContainer = document.getElementById('modalIconContainer');
+            const icon = document.getElementById('modalIcon');
+
+            modalTitle.innerText = title;
+            modalMessage.innerText = msg;
+
+            if (type === 'error' || type === 'warning') {
+                iconContainer.className = "w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl mb-4 bg-rose-100 text-rose-600";
+                icon.className = "fa-solid fa-triangle-exclamation";
+            } else if (type === 'success') {
+                iconContainer.className = "w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl mb-4 bg-emerald-100 text-emerald-600";
+                icon.className = "fa-solid fa-trophy";
+            } else {
+                iconContainer.className = "w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl mb-4 bg-sky-100 text-sky-600";
+                icon.className = "fa-solid fa-circle-info";
+            }
+
+            overlay.classList.remove('hidden');
+            setTimeout(() => {
+                box.classList.remove('scale-95', 'opacity-0');
+                box.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        // 關閉彈窗
+        function closeModal() {
+            const overlay = document.getElementById('modalOverlay');
+            const box = document.getElementById('modalBox');
+            box.classList.remove('scale-100', 'opacity-100');
+            box.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+            }, 200);
+        }
+
+        // 延遲工具函式
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // 規則說明對話框
+        document.getElementById('btnHelp').onclick = () => {
+            showModal(
+                "航行挑戰規則說明",
+                "1. 地圖編輯：可在右側 7x7 網格點擊，放置小船起點、小山障礙或寶藏。\n" +
+                "2. 旋轉船隻：點擊「旋轉小船」調整出航朝向。\n" +
+                "3. 卡牌限制：可自訂每種卡牌上限。若無設定則可無限次出牌。\n" +
+                "4. 跳島卡規則：在海面上時前方必須是【小山】才能跳上島；受困在小島上時必須再次使用【跳島卡】才能跳回海面！",
+                "info"
+            );
+        };
+    </script>
+</body>
+</html>
